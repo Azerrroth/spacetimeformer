@@ -25,14 +25,14 @@ _DSETS = [
 ]
 
 
+# Create Args Parser
 def create_parser():
     model = sys.argv[1]
     dset = sys.argv[2]
 
     # Throw error now before we get confusing parser issues
-    assert (
-        model in _MODELS
-    ), f"Unrecognized model (`{model}`). Options include: {_MODELS}"
+    assert (model in _MODELS
+            ), f"Unrecognized model (`{model}`). Options include: {_MODELS}"
     assert dset in _DSETS, f"Unrecognized dset (`{dset}`). Options include: {_DSETS}"
 
     parser = ArgumentParser()
@@ -73,9 +73,10 @@ def create_parser():
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--run_name", type=str, required=True)
     parser.add_argument("--accumulate", type=int, default=1)
-    parser.add_argument(
-        "--trials", type=int, default=1, help="How many consecutive trials to run"
-    )
+    parser.add_argument("--trials",
+                        type=int,
+                        default=1,
+                        help="How many consecutive trials to run")
 
     if len(sys.argv) > 3 and sys.argv[3] == "-h":
         parser.print_help()
@@ -84,6 +85,7 @@ def create_parser():
     return parser
 
 
+# Create model
 def create_model(config):
     x_dim, y_dim = None, None
     if config.dset == "metr-la":
@@ -222,6 +224,7 @@ def create_model(config):
     return forecaster
 
 
+# Create dataset
 def create_dset(config):
     INV_SCALER = lambda x: x
     SCALER = lambda x: x
@@ -229,9 +232,8 @@ def create_dset(config):
 
     if config.dset == "metr-la" or config.dset == "pems-bay":
         if config.dset == "pems-bay":
-            assert (
-                "pems_bay" in config.data_path
-            ), "Make sure to switch to the pems-bay file!"
+            assert ("pems_bay" in config.data_path
+                    ), "Make sure to switch to the pems-bay file!"
         data = stf.data.metr_la.METR_LA_Data(config.data_path)
         DATA_MODULE = stf.data.DataModule(
             datasetCls=stf.data.metr_la.METR_LA_Torch,
@@ -310,9 +312,13 @@ def create_dset(config):
     return DATA_MODULE, INV_SCALER, SCALER, NULL_VAL
 
 
+# Create callbacks
+# 单次训练的回调函数？感觉像是
+# 包含early stopping的回调函数等等
 def create_callbacks(config):
     saving = pl.callbacks.ModelCheckpoint(
-        dirpath=f"./data/stf_model_checkpoints/{config.run_name}_{''.join([str(random.randint(0,9)) for _ in range(9)])}",
+        dirpath=
+        f"./data/stf_model_checkpoints/{config.run_name}_{''.join([str(random.randint(0,9)) for _ in range(9)])}",
         monitor="val/mse",
         mode="min",
         filename=f"{config.run_name}" + "{epoch:02d}-{val/mse:.2f}",
@@ -325,8 +331,7 @@ def create_callbacks(config):
             pl.callbacks.early_stopping.EarlyStopping(
                 monitor="val/loss",
                 patience=5,
-            )
-        )
+            ))
     if config.wandb:
         callbacks.append(pl.callbacks.LearningRateMonitor())
 
@@ -336,23 +341,21 @@ def create_callbacks(config):
                 start=config.teacher_forcing_start,
                 end=config.teacher_forcing_end,
                 epochs=config.teacher_forcing_anneal_epochs,
-            )
-        )
+            ))
     if config.time_mask_loss:
         callbacks.append(
             stf.callbacks.TimeMaskedLossCallback(
                 start=config.time_mask_start,
                 end=config.target_points,
                 steps=config.time_mask_anneal_steps,
-            )
-        )
+            ))
     return callbacks
 
 
 def main(args):
     if args.wandb:
         import wandb
-
+        # wandb 深度学习轻量级可视化工具
         project = os.getenv("STF_WANDB_PROJ")
         entity = os.getenv("STF_WANDB_ACCT")
         log_dir = os.getenv("STF_LOG_DIR")
@@ -367,6 +370,7 @@ def main(args):
             project is not None and entity is not None
         ), "Please set environment variables `STF_WANDB_ACCT` and `STF_WANDB_PROJ` with \n\
             your wandb user/organization name and project title, respectively."
+
         experiment = wandb.init(
             project=project,
             entity=entity,
@@ -377,9 +381,8 @@ def main(args):
         config = wandb.config
         wandb.run.name = args.run_name
         wandb.run.save()
-        logger = pl.loggers.WandbLogger(
-            experiment=experiment, save_dir="./data/stf_LOG_DIR"
-        )
+        logger = pl.loggers.WandbLogger(experiment=experiment,
+                                        save_dir="./data/stf_LOG_DIR")
         logger.log_hyperparams(config)
 
     # Dset
@@ -398,10 +401,9 @@ def main(args):
 
     if args.wandb and args.plot:
         callbacks.append(
-            stf.plot.PredictionPlotterCallback(
-                test_samples, total_samples=min(8, args.batch_size)
-            )
-        )
+            stf.plot.PredictionPlotterCallback(test_samples,
+                                               total_samples=min(
+                                                   8, args.batch_size)))
     if args.wandb and args.model == "spacetimeformer" and args.attn_plot:
 
         callbacks.append(
@@ -410,8 +412,7 @@ def main(args):
                 layer=0,
                 total_samples=min(16, args.batch_size),
                 raw_data_dir=wandb.run.dir,
-            )
-        )
+            ))
 
     trainer = pl.Trainer(
         gpus=args.gpus,

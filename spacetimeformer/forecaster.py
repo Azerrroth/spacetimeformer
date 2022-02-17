@@ -10,6 +10,8 @@ import numpy as np
 import spacetimeformer as stf
 
 
+# Forecaster 基类
+#
 class Forecaster(pl.LightningModule, ABC):
     def __init__(
         self,
@@ -50,9 +52,8 @@ class Forecaster(pl.LightningModule, ABC):
     def eval_step_forward_kwargs(self):
         return {}
 
-    def loss_fn(
-        self, true: torch.Tensor, preds: torch.Tensor, mask: torch.Tensor
-    ) -> torch.Tensor:
+    def loss_fn(self, true: torch.Tensor, preds: torch.Tensor,
+                mask: torch.Tensor) -> torch.Tensor:
 
         if self.loss == "mse":
             if isinstance(preds, Normal):
@@ -68,9 +69,8 @@ class Forecaster(pl.LightningModule, ABC):
         else:
             raise ValueError(f"Unrecognized Loss Function : {self.loss}")
 
-    def forecasting_loss(
-        self, outputs: torch.Tensor, y_t: torch.Tensor, time_mask: int
-    ) -> Tuple[torch.Tensor]:
+    def forecasting_loss(self, outputs: torch.Tensor, y_t: torch.Tensor,
+                         time_mask: int) -> Tuple[torch.Tensor]:
         if self.null_value is not None:
             null_mask_mat = y_t != self.null_value
         else:
@@ -94,9 +94,9 @@ class Forecaster(pl.LightningModule, ABC):
         x_c, y_c, x_t, y_t = batch
         outputs, *_ = self(x_c, y_c, x_t, y_t, **forward_kwargs)
 
-        loss, mask = self.forecasting_loss(
-            outputs=outputs, y_t=y_t, time_mask=time_mask
-        )
+        loss, mask = self.forecasting_loss(outputs=outputs,
+                                           y_t=y_t,
+                                           time_mask=time_mask)
         return loss, outputs, mask
 
     def predict(
@@ -111,19 +111,16 @@ class Forecaster(pl.LightningModule, ABC):
         x_c = x_c.to(self.device).float()
         x_t = x_t.to(self.device).float()
         # move y_c to cpu if it isn't already there, scale, and then move back to the model device
-        y_c = torch.from_numpy(self._scaler(y_c.cpu().numpy())).to(self.device).float()
+        y_c = torch.from_numpy(self._scaler(y_c.cpu().numpy())).to(
+            self.device).float()
         # create dummy y_t of zeros
-        y_t = (
-            torch.zeros((x_t.shape[0], x_t.shape[1], y_c.shape[2]))
-            .to(self.device)
-            .float()
-        )
+        y_t = (torch.zeros((x_t.shape[0], x_t.shape[1],
+                            y_c.shape[2])).to(self.device).float())
 
         with torch.no_grad():
             # gradient-free prediction
             normalized_preds, *_ = self.forward(
-                x_c, y_c, x_t, y_t, **self.eval_step_forward_kwargs
-            )
+                x_c, y_c, x_t, y_t, **self.eval_step_forward_kwargs)
 
         # handle case that the output is a distribution (spacetimeformer)
         if isinstance(normalized_preds, Normal):
@@ -133,11 +130,9 @@ class Forecaster(pl.LightningModule, ABC):
                 normalized_preds = normalized_preds.mean
 
         # preds --> cpu --> inverse scale to original units --> original device of y_c
-        preds = (
-            torch.from_numpy(self._inv_scaler(normalized_preds.cpu().numpy()))
-            .to(og_device)
-            .float()
-        )
+        preds = (torch.from_numpy(
+            self._inv_scaler(
+                normalized_preds.cpu().numpy())).to(og_device).float())
         return preds
 
     @abstractmethod
@@ -159,7 +154,8 @@ class Forecaster(pl.LightningModule, ABC):
         y_t: torch.Tensor,
         **forward_kwargs,
     ) -> Tuple[torch.Tensor]:
-        preds, *extra = self.forward_model_pass(x_c, y_c, x_t, y_t, **forward_kwargs)
+        preds, *extra = self.forward_model_pass(x_c, y_c, x_t, y_t,
+                                                **forward_kwargs)
         baseline = self.linear_model(y_c)
         if isinstance(preds, Normal):
             preds.loc = preds.loc + baseline
@@ -167,8 +163,8 @@ class Forecaster(pl.LightningModule, ABC):
         else:
             output = preds + baseline
         if extra:
-            return (output,) + tuple(extra)
-        return (output,)
+            return (output, ) + tuple(extra)
+        return (output, )
 
     def _compute_stats(self, pred: torch.Tensor, true: torch.Tensor):
         pred = self._inv_scaler(pred.detach().cpu().numpy())
@@ -181,9 +177,8 @@ class Forecaster(pl.LightningModule, ABC):
         }
 
     def step(self, batch: Tuple[torch.Tensor], train: bool = False):
-        kwargs = (
-            self.train_step_forward_kwargs if train else self.eval_step_forward_kwargs
-        )
+        kwargs = (self.train_step_forward_kwargs
+                  if train else self.eval_step_forward_kwargs)
         time_mask = self.time_masked_idx if train else None
 
         loss, output, mask = self.compute_loss(
@@ -228,9 +223,9 @@ class Forecaster(pl.LightningModule, ABC):
         return self(*batch, **self.eval_step_forward_kwargs)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.learning_rate, weight_decay=self.l2_coeff
-        )
+        optimizer = torch.optim.Adam(self.parameters(),
+                                     lr=self.learning_rate,
+                                     weight_decay=self.l2_coeff)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             patience=3,
@@ -251,6 +246,7 @@ class Forecaster(pl.LightningModule, ABC):
         parser.add_argument("--learning_rate", type=float, default=1e-4)
         parser.add_argument("--grad_clip_norm", type=float, default=0)
         parser.add_argument("--linear_window", type=int, default=0)
-        parser.add_argument(
-            "--loss", type=str, default="mse", choices=["mse", "mae", "nll"]
-        )
+        parser.add_argument("--loss",
+                            type=str,
+                            default="mse",
+                            choices=["mse", "mae", "nll"])
