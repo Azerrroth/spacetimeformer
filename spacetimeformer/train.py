@@ -14,14 +14,8 @@ import spacetimeformer as stf
 _MODELS = ["spacetimeformer", "mtgnn", "lstm", "lstnet", "linear"]
 
 _DSETS = [
-    "asos",
-    "metr-la",
-    "pems-bay",
-    "exchange",
-    "precip",
-    "toy1",
-    "toy2",
-    "solar_energy",
+    "asos", "metr-la", "pems-bay", "exchange", "precip", "toy1", "toy2",
+    "solar_energy", "SMD"
 ]
 
 
@@ -112,9 +106,12 @@ def create_model(config):
     elif config.dset == "toy2":
         x_dim = 6
         y_dim = 20
+    elif config.dset == "SMD":
+        x_dim = 6
+        y_dim = 38
 
-    assert x_dim is not None
-    assert y_dim is not None
+    assert x_dim is not None, f"Unrecognized dset (`{config.dset}`). Options include: {_DSETS}"
+    assert y_dim is not None, f"Unrecognized dset (`{config.dset}`). Options include: {_DSETS}"
 
     if config.model == "lstm":
         forecaster = stf.lstm_model.LSTM_Forecaster(
@@ -290,6 +287,10 @@ def create_dset(config):
                 "New Zealand",
                 "Singapore",
             ]
+        elif config.dset == "SMD":
+            if data_path == "auto":
+                data_path = "./data/train.csv"
+            target_cols = ["D" + str(i) for i in range(38)]
         dset = stf.data.CSVTimeSeries(
             data_path=data_path,
             target_cols=target_cols,

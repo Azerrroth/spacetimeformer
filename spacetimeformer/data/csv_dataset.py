@@ -23,14 +23,14 @@ class CSVTimeSeries:
         test_split: float = 0.15,
     ):
         self.data_path = data_path
-        assert os.path.exists(self.data_path)
+        assert os.path.exists(self.data_path), f"{self.data_path} not found"
 
         # read the file and do some datetime conversions
         raw_df = pd.read_csv(
             self.data_path,
             **read_csv_kwargs,
         )
-
+        # 数据读取，从中读取 [Datetime列]
         time_df = pd.to_datetime(raw_df["Datetime"], format="%Y-%m-%d %H:%M")
         df = stf.data.timefeatures.time_features(time_df, raw_df)
 
@@ -38,16 +38,20 @@ class CSVTimeSeries:
         assert (df["Datetime"] < pd.Timestamp.max).all()
 
         # Train/Val/Test Split using holdout approach #
-
+        # 把 需要 mask 的部分的值变成 cond
         def mask_intervals(mask, intervals, cond):
+            '''
+            :param mask: mask to apply
+            :param intervals: intervals to mask
+            :param cond: condition to apply
+            '''
             for (interval_low, interval_high) in intervals:
                 if interval_low is None:
                     interval_low = df["Datetime"].iloc[0].year
                 if interval_high is None:
                     interval_high = df["Datetime"].iloc[-1].year
-                mask[
-                    (df["Datetime"] >= interval_low) & (df["Datetime"] <= interval_high)
-                ] = cond
+                mask[(df["Datetime"] >= interval_low)
+                     & (df["Datetime"] <= interval_high)] = cond
             return mask
 
         test_cutoff = len(time_df) - round(test_split * len(time_df))
@@ -61,9 +65,13 @@ class CSVTimeSeries:
         test_interval_high = time_df.iloc[-1]
         test_intervals = [(test_interval_low, test_interval_high)]
 
-        train_mask = df["Datetime"] > pd.Timestamp.min
-        val_mask = df["Datetime"] > pd.Timestamp.max
-        test_mask = df["Datetime"] > pd.Timestamp.max
+        train_mask = df["Datetime"] > pd.Timestamp.min  # 1
+        val_mask = df["Datetime"] > pd.Timestamp.max  # 0
+        test_mask = df["Datetime"] > pd.Timestamp.max  # 0
+
+        # Train Mask 中，train data 为1，其余为0
+        # val mask 中，val data 为1，其余为0
+        # test mask 中，test data 为1，其余为0
         train_mask = mask_intervals(train_mask, test_intervals, False)
         train_mask = mask_intervals(train_mask, val_intervals, False)
         val_mask = mask_intervals(val_mask, val_intervals, True)
@@ -93,9 +101,8 @@ class CSVTimeSeries:
 
     def apply_scaling_df(self, df):
         scaled = df.copy(deep=True)
-        scaled[self.target_cols] = (
-            df[self.target_cols].values - self._scaler.mean_
-        ) / self._scaler.scale_
+        scaled[self.target_cols] = (df[self.target_cols].values -
+                                    self._scaler.mean_) / self._scaler.scale_
         return scaled
 
     def apply_scaling(self, array):
@@ -103,14 +110,14 @@ class CSVTimeSeries:
 
     def reverse_scaling_df(self, df):
         scaled = df.copy(deep=True)
-        scaled[self.target_cols] = (
-            df[self.target_cols] * self._scaler.scale_
-        ) + self._scaler.mean_
+        scaled[self.target_cols] = (df[self.target_cols] *
+                                    self._scaler.scale_) + self._scaler.mean_
         return scaled
 
     def reverse_scaling(self, array):
         return (array * self._scaler.scale_) + self._scaler.mean_
 
+    # 获取训练数据、验证数据、测试数据
     @property
     def train_data(self):
         return self._train_data
@@ -124,6 +131,9 @@ class CSVTimeSeries:
         return self._test_data
 
     def length(self, split):
+        '''
+        获取训练数据、验证数据、测试数据的长度
+        '''
         return {
             "train": len(self.train_data),
             "val": len(self.val_data),
@@ -135,14 +145,17 @@ class CSVTimeSeries:
         parser.add_argument("--data_path", type=str, default="auto")
 
 
+# CSVTorchDset
+# CSV pyTorch Dataset, with support for train/val/test splits
+# and time series data
 class CSVTorchDset(Dataset):
     def __init__(
-        self,
-        csv_time_series: CSVTimeSeries,
-        split: str = "train",
-        context_points: int = 128,
-        target_points: int = 32,
-        time_resolution: int = 1,
+            self,
+            csv_time_series: CSVTimeSeries,
+            split: str = "train",
+            context_points: int = 128,
+            target_points: int = 32,
+            time_resolution: int = 1,  # 时间解析度，每个时间点的长度
     ):
         assert split in ["train", "val", "test"]
         self.split = split
@@ -152,20 +165,19 @@ class CSVTorchDset(Dataset):
         self.time_resolution = time_resolution
 
         self._slice_start_points = [
-            i
-            for i in range(
+            i for i in range(
                 0,
-                self.series.length(split)
-                + time_resolution * (-target_points - context_points)
-                + 1,
+                self.series.length(split) + time_resolution *
+                (-target_points - context_points) + 1,
             )
         ]
         random.shuffle(self._slice_start_points)
-        self._slice_start_points = self._slice_start_points
+        self._slice_start_points = self._slice_start_points  # 这句干什么用？
 
     def __len__(self):
         return len(self._slice_start_points)
 
+    # *np_arrays 收集所有未定义参数，形成一个 tuple 对象
     def _torch(self, *np_arrays):
         t = []
         for x in np_arrays:
@@ -173,28 +185,34 @@ class CSVTorchDset(Dataset):
         return tuple(t)
 
     def __getitem__(self, i):
+        '''
+        上下文的数据，目标的数据
+        '''
         start = self._slice_start_points[i]
         series_slice = self.series.get_slice(
             self.split,
             start=start,
-            stop=start
-            + self.time_resolution * (self.context_points + self.target_points),
+            stop=start + self.time_resolution *
+            (self.context_points + self.target_points),
             skip=self.time_resolution,
         ).drop(columns=["Datetime"])
+
         ctxt_slice, trgt_slice = (
-            series_slice.iloc[: self.context_points],
-            series_slice.iloc[self.context_points :],
+            series_slice.iloc[:self.context_points],
+            series_slice.iloc[self.context_points:],
         )
-        ctxt_x = ctxt_slice[
-            ctxt_slice.columns.difference(self.series.target_cols)
-        ].values
+
+        # Context
+        temp_value = ctxt_slice.columns.difference(self.series.target_cols)
+        ctxt_x = ctxt_slice[ctxt_slice.columns.difference(
+            self.series.target_cols)].values
         ctxt_y = ctxt_slice[self.series.target_cols].values
 
-        trgt_x = trgt_slice[
-            trgt_slice.columns.difference(self.series.target_cols)
-        ].values
+        # Target
+        trgt_x = trgt_slice[trgt_slice.columns.difference(
+            self.series.target_cols)].values
         trgt_y = trgt_slice[self.series.target_cols].values
-
+        # x是 Time Embedding 的结果，y 是目标值
         return self._torch(ctxt_x, ctxt_y, trgt_x, trgt_y)
 
     @classmethod
@@ -203,7 +221,8 @@ class CSVTorchDset(Dataset):
             "--context_points",
             type=int,
             default=128,
-            help="number of previous timesteps given to the model in order to make predictions",
+            help=
+            "number of previous timesteps given to the model in order to make predictions",
         )
         parser.add_argument(
             "--target_points",

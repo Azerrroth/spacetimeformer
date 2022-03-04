@@ -51,7 +51,9 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         null_value: float = None,
         verbose=True,
     ):
-        super().__init__(l2_coeff=l2_coeff, loss=loss, linear_window=linear_window)
+        super().__init__(l2_coeff=l2_coeff,
+                         loss=loss,
+                         linear_window=linear_window)
         self.spacetimeformer = stf.spacetimeformer_model.nn.Spacetimeformer(
             d_y=d_y,
             d_x=d_x,
@@ -118,9 +120,8 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         return {"output_attn": False}
 
     def step(self, batch: Tuple[torch.Tensor], train: bool):
-        kwargs = (
-            self.train_step_forward_kwargs if train else self.eval_step_forward_kwargs
-        )
+        kwargs = (self.train_step_forward_kwargs
+                  if train else self.eval_step_forward_kwargs)
 
         time_mask = self.time_masked_idx if train else None
 
@@ -136,7 +137,6 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         stats["class_loss"] = class_loss
         stats["loss"] = forecast_loss + self.class_loss_imp * class_loss
         stats["acc"] = acc
-
         """
         # temporary traffic stats:
         preds = self._inv_scaler(output.detach().cpu().numpy())
@@ -148,16 +148,14 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         """
         return stats
 
-    def classification_loss(
-        self, logits: torch.Tensor, labels: torch.Tensor
-    ) -> Tuple[torch.Tensor]:
+    def classification_loss(self, logits: torch.Tensor,
+                            labels: torch.Tensor) -> Tuple[torch.Tensor]:
 
         labels = labels.view(-1).to(logits.device)
         d_y = labels.max() + 1
 
         logits = logits.view(
-            -1, d_y
-        )  #  = torch.cat(logits.chunk(bs, dim=0), dim=1).squeeze(0)
+            -1, d_y)  #  = torch.cat(logits.chunk(bs, dim=0), dim=1).squeeze(0)
 
         class_loss = F.cross_entropy(logits, labels)
         acc = torchmetrics.functional.accuracy(
@@ -170,18 +168,20 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         x_c, y_c, x_t, y_t = batch
         outputs, (logits, labels) = self(x_c, y_c, x_t, y_t, **forward_kwargs)
 
-        forecast_loss, mask = self.forecasting_loss(
-            outputs=outputs, y_t=y_t, time_mask=time_mask
-        )
+        forecast_loss, mask = self.forecasting_loss(outputs=outputs,
+                                                    y_t=y_t,
+                                                    time_mask=time_mask)
 
         if self.embed_method == "spatio-temporal" and self.class_loss_imp > 0:
-            class_loss, acc = self.classification_loss(logits=logits, labels=labels)
+            class_loss, acc = self.classification_loss(logits=logits,
+                                                       labels=labels)
         else:
             class_loss, acc = 0.0, -1.0
 
         return forecast_loss, class_loss, acc, outputs.mean, mask
 
     def forward_model_pass(self, x_c, y_c, x_t, y_t, output_attn=False):
+        # Pass 给
         if len(y_c.shape) == 2:
             y_c = y_c.unsqueeze(-1)
             y_t = y_t.unsqueeze(-1)
@@ -189,18 +189,20 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         batch_x_mark = x_c
 
         if self.start_token_len > 0:
-            batch_y = torch.cat((y_c[:, -self.start_token_len :, :], y_t), dim=1)
-            batch_y_mark = torch.cat((x_c[:, -self.start_token_len :, :], x_t), dim=1)
+            batch_y = torch.cat((y_c[:, -self.start_token_len:, :], y_t),
+                                dim=1)
+            batch_y_mark = torch.cat((x_c[:, -self.start_token_len:, :], x_t),
+                                     dim=1)
         else:
             batch_y = y_t
             batch_y_mark = x_t
 
         dec_inp = torch.cat(
             [
-                batch_y[:, : self.start_token_len, :],
-                torch.zeros((batch_y.shape[0], y_t.shape[1], batch_y.shape[-1])).to(
-                    self.device
-                ),
+                batch_y[:, :self.start_token_len, :],
+                torch.zeros(
+                    (batch_y.shape[0], y_t.shape[1], batch_y.shape[-1])).to(
+                        self.device),
             ],
             dim=1,
         ).float()
@@ -219,7 +221,9 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
-            self.parameters(), lr=self.base_lr, weight_decay=self.l2_coeff,
+            self.parameters(),
+            lr=self.base_lr,
+            weight_decay=self.l2_coeff,
         )
         scheduler = stf.lr_scheduler.WarmupReduceLROnPlateau(
             optimizer,
@@ -247,25 +251,31 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             "--start_token_len",
             type=int,
             required=True,
-            help="Length of decoder start token. Adds this many of the final context points to the start of the target sequence.",
+            help=
+            "Length of decoder start token. Adds this many of the final context points to the start of the target sequence.",
         )
-        parser.add_argument(
-            "--d_model", type=int, default=256, help="Transformer embedding dimension."
-        )
-        parser.add_argument(
-            "--n_heads", type=int, default=8, help="Number of self-attention heads."
-        )
-        parser.add_argument(
-            "--enc_layers", type=int, default=4, help="Transformer encoder layers."
-        )
-        parser.add_argument(
-            "--dec_layers", type=int, default=3, help="Transformer decoder layers."
-        )
+        parser.add_argument("--d_model",
+                            type=int,
+                            default=256,
+                            help="Transformer embedding dimension.")
+        parser.add_argument("--n_heads",
+                            type=int,
+                            default=8,
+                            help="Number of self-attention heads.")
+        parser.add_argument("--enc_layers",
+                            type=int,
+                            default=4,
+                            help="Transformer encoder layers.")
+        parser.add_argument("--dec_layers",
+                            type=int,
+                            default=3,
+                            help="Transformer decoder layers.")
         parser.add_argument(
             "--d_ff",
             type=int,
             default=1024,
-            help="Dimension of Transformer up-scaling MLP layer. (often 4 * d_model)",
+            help=
+            "Dimension of Transformer up-scaling MLP layer. (often 4 * d_model)",
         )
         parser.add_argument(
             "--attn_factor",
@@ -277,31 +287,36 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             "--dropout_emb",
             type=float,
             default=0.2,
-            help="Embedding dropout rate. Drop out elements of the embedding vectors during training.",
+            help=
+            "Embedding dropout rate. Drop out elements of the embedding vectors during training.",
         )
         parser.add_argument(
             "--dropout_token",
             type=float,
             default=0.0,
-            help="Token dropout rate. Drop out entire input tokens during training.",
+            help=
+            "Token dropout rate. Drop out entire input tokens during training.",
         )
         parser.add_argument(
             "--dropout_attn_out",
             type=float,
             default=0.0,
-            help="Attention dropout rate. Dropout elements of the attention matrix. Only applicable to attn mechanisms that explicitly compute the attn matrix (e.g. Full).",
+            help=
+            "Attention dropout rate. Dropout elements of the attention matrix. Only applicable to attn mechanisms that explicitly compute the attn matrix (e.g. Full).",
         )
         parser.add_argument(
             "--dropout_qkv",
             type=float,
             default=0.0,
-            help="Query, Key and Value dropout rate. Dropout elements of these attention vectors during training.",
+            help=
+            "Query, Key and Value dropout rate. Dropout elements of these attention vectors during training.",
         )
         parser.add_argument(
             "--dropout_ff",
             type=float,
             default=0.3,
-            help="Standard dropout applied to activations of FF networks in the Transformer.",
+            help=
+            "Standard dropout applied to activations of FF networks in the Transformer.",
         )
         parser.add_argument(
             "--global_self_attn",
@@ -359,12 +374,14 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             type=str,
             default="gelu",
             choices=["relu", "gelu"],
-            help="Activation function for Transformer encoder and decoder layers.",
+            help=
+            "Activation function for Transformer encoder and decoder layers.",
         )
         parser.add_argument(
             "--post_norm",
             action="store_true",
-            help="Enable post-norm architecture for Transformers. See https://arxiv.org/abs/2002.04745.",
+            help=
+            "Enable post-norm architecture for Transformers. See https://arxiv.org/abs/2002.04745.",
         )
         parser.add_argument(
             "--norm",
@@ -372,35 +389,41 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             choices=["layer", "batch", "scale", "power", "none"],
             default="batch",
         )
-        parser.add_argument(
-            "--init_lr", type=float, default=1e-10, help="Initial learning rate."
-        )
+        parser.add_argument("--init_lr",
+                            type=float,
+                            default=1e-10,
+                            help="Initial learning rate.")
         parser.add_argument(
             "--base_lr",
             type=float,
             default=5e-4,
-            help="Base/peak LR. The LR is annealed to this value from --init_lr over --warmup_steps training steps.",
+            help=
+            "Base/peak LR. The LR is annealed to this value from --init_lr over --warmup_steps training steps.",
         )
-        parser.add_argument(
-            "--warmup_steps", type=int, default=0, help="LR anneal steps."
-        )
+        parser.add_argument("--warmup_steps",
+                            type=int,
+                            default=0,
+                            help="LR anneal steps.")
         parser.add_argument(
             "--decay_factor",
             type=float,
             default=0.25,
-            help="Factor to reduce LR on plateau (after warmup period is over).",
+            help=
+            "Factor to reduce LR on plateau (after warmup period is over).",
         )
         parser.add_argument(
             "--initial_downsample_convs",
             type=int,
             default=0,
-            help="Add downsampling Conv1Ds to the encoder embedding layer to reduce context sequence length.",
+            help=
+            "Add downsampling Conv1Ds to the encoder embedding layer to reduce context sequence length.",
         )
         parser.add_argument(
             "--class_loss_imp",
             type=float,
             default=0.1,
-            help="Coefficient for node classification loss function. Set to 0 to disable this feature. Does not significantly impact forecasting results due to detached gradient.",
+            help=
+            "Coefficient for node classification loss function. Set to 0 to disable this feature. Does not significantly impact forecasting results due to detached gradient.",
         )
         parser.add_argument(
             "--intermediate_downsample_convs",
@@ -412,7 +435,8 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             "--time_emb_dim",
             type=int,
             default=12,
-            help="Time embedding dimension. Embed *each dimension of x* with this many learned periodic values.",
+            help=
+            "Time embedding dimension. Embed *each dimension of x* with this many learned periodic values.",
         )
         parser.add_argument(
             "--performer_kernel",
@@ -425,12 +449,14 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             "--performer_redraw_interval",
             type=int,
             default=125,
-            help="Training steps between resampling orthogonal random features for FAVOR+ attention",
+            help=
+            "Training steps between resampling orthogonal random features for FAVOR+ attention",
         )
         parser.add_argument(
             "--embed_method",
             type=str,
             choices=["spatio-temporal", "temporal"],
             default="spatio-temporal",
-            help="Embedding method. spatio-temporal enables long-sequence spatio-temporal transformer mode while temporal recovers default architecture.",
+            help=
+            "Embedding method. spatio-temporal enables long-sequence spatio-temporal transformer mode while temporal recovers default architecture.",
         )

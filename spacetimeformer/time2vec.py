@@ -11,9 +11,10 @@ class Time2Vec(nn.Module):
             self.embed_dim = embed_dim // input_dim
             self.input_dim = input_dim
             self.embed_weight = nn.parameter.Parameter(
-                torch.randn(self.input_dim, self.embed_dim)
-            )
-            self.embed_bias = nn.parameter.Parameter(torch.randn(self.embed_dim))
+                torch.randn(self.input_dim,
+                            self.embed_dim))  # TODO: 看看这儿的 input_dim 和 embed_dim
+            self.embed_bias = nn.parameter.Parameter(
+                torch.randn(self.embed_dim))
             self.act_function = act_function
 
     def forward(self, x):
@@ -22,9 +23,9 @@ class Time2Vec(nn.Module):
             # x.shape = (bs, sequence_length, input_dim, input_dim)
             x_affine = torch.matmul(x, self.embed_weight) + self.embed_bias
             # x_affine.shape = (bs, sequence_length, input_dim, time_embed_dim)
-            x_affine_0, x_affine_remain = torch.split(
-                x_affine, [1, self.embed_dim - 1], dim=-1
-            )
+            x_affine_0, x_affine_remain = torch.split(x_affine,
+                                                      [1, self.embed_dim - 1],
+                                                      dim=-1)
             x_affine_remain = self.act_function(x_affine_remain)
             x_output = torch.cat([x_affine_0, x_affine_remain], dim=-1)
             x_output = x_output.view(x_output.size(0), x_output.size(1), -1)

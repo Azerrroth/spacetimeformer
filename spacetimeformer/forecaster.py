@@ -11,7 +11,7 @@ import spacetimeformer as stf
 
 
 # Forecaster 基类
-#
+
 class Forecaster(pl.LightningModule, ABC):
     def __init__(
         self,
