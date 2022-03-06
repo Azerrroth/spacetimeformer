@@ -289,7 +289,7 @@ def create_dset(config):
             ]
         elif config.dset == "SMD":
             if data_path == "auto":
-                data_path = "./data/train.csv"
+                data_path = "./data/SMD/case.csv"
             target_cols = ["D" + str(i) for i in range(38)]
         dset = stf.data.CSVTimeSeries(
             data_path=data_path,
